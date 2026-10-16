@@ -1,0 +1,80 @@
+name: Generate Void's Echoes ambient WAV
+
+on:
+  push:
+    branches:
+      - generate-voids-echoes
+    paths:
+      - .github/workflows/generate-ambient.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate-audio:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install NumPy
+        run: python -m pip install numpy
+      - name: Generate 90-second dark ambient WAV
+        run: |
+          python - <<'PY'
+          import math, wave
+          import numpy as np
+
+          sr = 24000
+          duration = 90
+          n = sr * duration
+          t = np.arange(n, dtype=np.float64) / sr
+          rng = np.random.default_rng(7319)
+
+          # Slow, evolving sci-fi drones with sub-bass and distant metallic tones.
+          left = np.zeros(n, dtype=np.float64)
+          right = np.zeros(n, dtype=np.float64)
+          drones = [(38.89, .20), (58.27, .13), (73.42, .10),
+                    (110.0, .055), (146.83, .035), (220.0, .018)]
+          for i, (freq, amp) in enumerate(drones):
+              drift = 0.15 * np.sin(2 * np.pi * (0.003 + i * 0.0007) * t + i)
+              phase = 2 * np.pi * freq * t + 0.7 * np.sin(2*np.pi*0.017*t+i)
+              tone = np.sin(phase + drift)
+              swell = 0.45 + 0.55 * (0.5 + 0.5*np.sin(2*np.pi*(0.008+i*.001)*t+i*1.7))
+              left += amp * tone * swell
+              right += amp * np.sin(phase + 0.6 + drift) * swell
+
+          # Filtered-feeling distant noise and slow, eerie resonances.
+          noise = rng.normal(0, 1, n)
+          smooth = np.convolve(noise, np.ones(120)/120, mode='same')
+          left += 0.08 * smooth
+          right += 0.075 * np.roll(smooth, 900)
+          for i, freq in enumerate([311.13, 392.0, 466.16, 622.25]):
+              env = np.maximum(0, np.sin(2*np.pi*(0.006+i*.0015)*t + i*2.2))**3
+              shimmer = np.sin(2*np.pi*freq*t + 0.3*np.sin(2*np.pi*.021*t+i))
+              left += (0.012/(i+1)) * env * shimmer
+              right += (0.012/(i+1)) * env * np.sin(2*np.pi*freq*1.003*t+1.1)
+
+          fade = np.minimum(1, t/5) * np.minimum(1, (duration-t)/8)
+          left *= fade
+          right *= fade
+          peak = max(np.max(np.abs(left)), np.max(np.abs(right)), 1e-9)
+          audio = np.stack([left, right], axis=1) * (0.88 / peak)
+          pcm = (audio * 32767).astype('<i2')
+
+          with wave.open('Voids_Echoes_Dark_Ambient.wav', 'wb') as f:
+              f.setnchannels(2)
+              f.setsampwidth(2)
+              f.setframerate(sr)
+              f.writeframes(pcm.tobytes())
+          print(f'Created {duration}s stereo WAV at {sr} Hz')
+          PY
+      - name: Upload WAV as downloadable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Voids-Echoes-Dark-Ambient
+          path: Voids_Echoes_Dark_Ambient.wav
+          if-no-files-found: error
+          retention-days: 30
