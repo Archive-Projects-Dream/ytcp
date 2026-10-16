@@ -9,12 +9,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   generate-audio:
     runs-on: ubuntu-latest
     steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: generate-voids-echoes
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -24,7 +28,7 @@ jobs:
       - name: Generate 90-second dark ambient WAV
         run: |
           python - <<'PY'
-          import math, wave
+          import wave
           import numpy as np
 
           sr = 24000
@@ -33,7 +37,6 @@ jobs:
           t = np.arange(n, dtype=np.float64) / sr
           rng = np.random.default_rng(7319)
 
-          # Slow, evolving sci-fi drones with sub-bass and distant metallic tones.
           left = np.zeros(n, dtype=np.float64)
           right = np.zeros(n, dtype=np.float64)
           drones = [(38.89, .20), (58.27, .13), (73.42, .10),
@@ -46,7 +49,6 @@ jobs:
               left += amp * tone * swell
               right += amp * np.sin(phase + 0.6 + drift) * swell
 
-          # Filtered-feeling distant noise and slow, eerie resonances.
           noise = rng.normal(0, 1, n)
           smooth = np.convolve(noise, np.ones(120)/120, mode='same')
           left += 0.08 * smooth
@@ -71,7 +73,18 @@ jobs:
               f.writeframes(pcm.tobytes())
           print(f'Created {duration}s stereo WAV at {sr} Hz')
           PY
-      - name: Upload WAV as downloadable artifact
+      - name: Commit WAV to branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Voids_Echoes_Dark_Ambient.wav
+          if git diff --cached --quiet; then
+            echo "WAV is already up to date"
+          else
+            git commit -m "Add generated Void's Echoes dark ambient WAV"
+            git push origin HEAD:generate-voids-echoes
+          fi
+      - name: Also upload WAV as downloadable artifact
         uses: actions/upload-artifact@v4
         with:
           name: Voids-Echoes-Dark-Ambient
