@@ -1,4 +1,4 @@
-name: Generate Void's Echoes ambient WAV
+name: Generate Deep Space Dark Ambient WAV
 
 on:
   push:
@@ -25,14 +25,14 @@ jobs:
           python-version: '3.12'
       - name: Install NumPy
         run: python -m pip install numpy
-      - name: Generate 90-second dark ambient WAV
+      - name: Generate 100-second deep-space dark ambient WAV
         run: |
           python - <<'PY'
           import wave
           import numpy as np
 
           sr = 24000
-          duration = 90
+          duration = 100
           n = sr * duration
           t = np.arange(n, dtype=np.float64) / sr
           rng = np.random.default_rng(7319)
@@ -53,6 +53,21 @@ jobs:
           smooth = np.convolve(noise, np.ones(120)/120, mode='same')
           left += 0.08 * smooth
           right += 0.075 * np.roll(smooth, 900)
+          # Rare, heavy sub-bass pulses with long decays and distant metallic overtones.
+          pulse_times = [7.5, 19.8, 34.6, 49.9, 66.7, 82.4, 94.0]
+          for j, onset in enumerate(pulse_times):
+              x = t - onset
+              active = x >= 0
+              xx = np.maximum(x, 0)
+              env = np.exp(-xx / (1.8 + 0.22 * (j % 3))) * active
+              thump = np.sin(2 * np.pi * (31.0 - 1.8 * np.minimum(xx, 1.0)) * xx)
+              sub = np.sin(2 * np.pi * 43.0 * xx + 0.4) * np.exp(-xx / 2.8) * active
+              metallic = (np.sin(2 * np.pi * (118.0 + 7*j) * xx)
+                          + 0.35 * np.sin(2 * np.pi * (173.0 + 5*j) * xx))
+              left += 0.46 * env * thump + 0.12 * sub + 0.045 * env * metallic
+              right += 0.42 * env * np.sin(2 * np.pi * (30.0 - 1.6 * np.minimum(xx, 1.0)) * xx + 0.15)
+              right += 0.10 * sub + 0.04 * env * np.sin(2 * np.pi * (121.0 + 7*j) * xx + 0.7)
+
           for i, freq in enumerate([311.13, 392.0, 466.16, 622.25]):
               env = np.maximum(0, np.sin(2*np.pi*(0.006+i*.0015)*t + i*2.2))**3
               shimmer = np.sin(2*np.pi*freq*t + 0.3*np.sin(2*np.pi*.021*t+i))
@@ -66,7 +81,7 @@ jobs:
           audio = np.stack([left, right], axis=1) * (0.88 / peak)
           pcm = (audio * 32767).astype('<i2')
 
-          with wave.open('Voids_Echoes_Dark_Ambient.wav', 'wb') as f:
+          with wave.open('Deep_Space_Dark_Ambient.wav', 'wb') as f:
               f.setnchannels(2)
               f.setsampwidth(2)
               f.setframerate(sr)
@@ -81,13 +96,13 @@ jobs:
           if git diff --cached --quiet; then
             echo "WAV is already up to date"
           else
-            git commit -m "Add generated Void's Echoes dark ambient WAV"
+            git commit -m "Add generated Deep Space dark ambient WAV"
             git push origin HEAD:generate-voids-echoes
           fi
       - name: Also upload WAV as downloadable artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Voids-Echoes-Dark-Ambient
+          name: Deep-Space-Dark-Ambient
           path: Voids_Echoes_Dark_Ambient.wav
           if-no-files-found: error
           retention-days: 30
